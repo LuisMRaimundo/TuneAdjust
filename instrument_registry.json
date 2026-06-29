@@ -1,0 +1,60 @@
+{
+  "tuba": {
+    "standard": {
+      "written_range": "A0 to F4",
+      "sounding_range": "A0 to F4",
+      "freq_range": "36.71 Hz to 349.23 Hz",
+      "transposition": "Concert pitch (C tuba)",
+      "range": "A0 to F4"
+    }
+  },
+  "violin": {
+    "standard": {
+      "written_range": "G3 to E7",
+      "sounding_range": "G3 to E7",
+      "range": "G3 to E7"
+    }
+  },
+  "viola": {
+    "standard": {
+      "written_range": "C3 to A6",
+      "sounding_range": "C3 to A6",
+      "range": "C3 to A6"
+    }
+  },
+  "cello": {
+    "standard": {
+      "written_range": "C2 to A5",
+      "sounding_range": "C2 to A5",
+      "range": "C2 to A5"
+    }
+  },
+  "double_bass": {
+    "standard": {
+      "written_range": "A1 to G4",
+      "sounding_range": "A1 to G4",
+      "range": "A1 to G4"
+    }
+  },
+  "contrabass": {
+    "standard": {
+      "written_range": "A1 to G4",
+      "sounding_range": "A1 to G4",
+      "range": "A1 to G4"
+    }
+  },
+  "flute": {
+    "standard": {
+      "written_range": "C4 to C7",
+      "sounding_range": "C4 to C7",
+      "range": "C4 to C7"
+    }
+  },
+  "piano": {
+    "standard": {
+      "written_range": "A0 to C8",
+      "sounding_range": "A0 to C8",
+      "range": "A0 to C8"
+    }
+  }
+}
