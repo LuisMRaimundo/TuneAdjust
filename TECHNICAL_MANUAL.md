@@ -1,6 +1,6 @@
 # Tune Detection B — Technical Manual
 
-**Version 2.3 · June 2026**
+**Version 2.4 · June 2026**
 
 This document is the full technical reference for **Tune Detection B**, a pitch-analysis and sample-correction toolkit for monophonic audio libraries where each filename encodes the intended note (e.g. `Violin_A4_sustain.wav`, `A#2.aif`).
 
@@ -759,19 +759,41 @@ No external config file beyond `instrument_registry.json`. Constants are code-le
 python -m pytest tests/ -q
 ```
 
+As of v2.4 the suite contains **111 automated tests** across unit, quality, and integration layers.
+
 ### Test modules
 
 | File | Covers |
 |------|--------|
 | `test_pitch_core.py` | Parsing, cents math, detection on synthetic tones, octave logic, instrument range, bass bounds |
+| `test_pitch_core_parsing.py` | `parse_note`, `parse_all_notes`, MIDI roundtrip, frequency table, enharmonic spellings, invalid octaves |
+| `test_pitch_core_octave.py` | Octave alias helpers, stable segment, `evaluate_tune_match` edge cases, `pitch_search_bounds`, `PitchSmoother` |
 | `test_auto_correct.py` | `plan_corrections`, rename paths, collision `_2` suffix, `list_batch_folders` |
+| `test_auto_correct_extended.py` | `display_note_token`, `should_rename_to_detected`, path building, `list_audio_files` |
 | `test_pitch_shift_tool.py` | AIFF/WAV soundfile format kwargs |
-| `test_pitch_shift_quality.py` | Pitch accuracy, RMS, envelope after shift |
+| `test_pitch_shift_tool_extended.py` | `_adaptive_n_fft`, RMS restore, FLAC/OGG kwargs, WAV/AIFF save roundtrip |
+| `test_pitch_shift_quality.py` | Pitch accuracy within auto-retune range, RMS ratio, envelope correlation |
+| `test_integration_audio.py` | `analyze_file` on WAV fixtures; `apply_auto_corrections` retune and rename |
 | `conftest.py` | Shared `sys.path` and `sr` fixture |
+
+### Test categories
+
+| Layer | What is validated |
+|-------|-------------------|
+| **Music theory / math** | Equal-temperament table, cents/semitone formulas, enharmonic equivalence, pitch-class vs octave errors |
+| **Acoustics / DSP** | pYIN/YIN/autocorr detection on pure tones, harmonic octave resolution, phase-vocoder shift quality |
+| **IT / pipeline** | Filename parsing (Orchidea velocity suffixes), collision-safe rename, format-preserving save, batch folder discovery |
 
 ### Synthetic tone tests
 
-Pure sine waves at known frequencies validate detection within cent tolerances. Low-bass tests (`A#1`) confirm adaptive `fmin` works.
+Pure sine waves at known frequencies validate detection within cent tolerances. Low-bass tests (`A#1`) confirm adaptive `fmin` works. Integration tests write temporary WAV files and exercise the full analyze → plan → apply → verify path.
+
+### Running subsets
+
+```bash
+python -m pytest tests/test_pitch_core_parsing.py -q
+python -m pytest tests/test_integration_audio.py -q
+```
 
 ---
 

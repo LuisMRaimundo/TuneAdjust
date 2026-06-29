@@ -1,4 +1,4 @@
-# Tune Detection B (v2.3)
+# TuneAdjust (v2.4)
 
 Pitch analysis and correction for **monophonic sample libraries** with note names in filenames (e.g. `Violin_A4_1.2s.wav`).
 
@@ -39,7 +39,7 @@ Optional dependencies:
 | `live_tuner.py` | Playback + real-time tuning meter |
 | `instrument_registry.json` | Instrument range warnings (`double_bass`, `violin`, …) |
 | `requirements.txt` | Python dependencies |
-| `tests/` | Unit tests (`test_pitch_core`, `test_auto_correct`, `test_pitch_shift_tool`, `test_pitch_shift_quality`) |
+| `tests/` | Test suite — 111 tests across 9 modules (see [Tests](#tests)) |
 
 ## Auto-fix rules (GUI default ON, or CLI)
 
@@ -89,6 +89,21 @@ Live tuner uses fast autocorrelation only.
 python -m pytest tests/ -q
 ```
 
+**111 tests** (June 2026) — run the full suite before releases.
+
+| Module | Focus |
+|--------|--------|
+| `test_pitch_core.py` | Detection on synthetic tones, Orchidea filenames, tune match, bass bounds |
+| `test_pitch_core_parsing.py` | Note tokens, MIDI roundtrip, frequency table, enharmonics |
+| `test_pitch_core_octave.py` | Octave math, segment selection, instrument search bounds, smoother |
+| `test_auto_correct.py` | `plan_corrections`, rename paths, batch folder discovery |
+| `test_auto_correct_extended.py` | `display_note_token`, `should_rename_to_detected`, audio file listing |
+| `test_pitch_shift_tool.py` | Soundfile format kwargs (WAV/AIFF) |
+| `test_pitch_shift_tool_extended.py` | Adaptive FFT, RMS restore, WAV/AIFF save roundtrip |
+| `test_pitch_shift_quality.py` | Pitch accuracy, loudness and envelope preservation after shift |
+| `test_integration_audio.py` | End-to-end analyze → retune / rename on synthetic WAV fixtures |
+| `conftest.py` | Shared `sys.path` and sample-rate fixture |
+
 ## Math
 
 - Cents: `1200 * log2(f_detected / f_expected)`  
@@ -97,5 +112,5 @@ python -m pytest tests/ -q
 
 ## Version
 
-2.3 — June 2026 — recursive batch, Orchidea filename fix, Rubber Band retune, quality tests.  
+2.4 — June 2026 — expanded test battery (111 tests), integration pipeline tests, `.gitignore`.  
 See [TECHNICAL_MANUAL.md](TECHNICAL_MANUAL.md) for full reference.
