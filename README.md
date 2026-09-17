@@ -1,8 +1,9 @@
-# TuneAdjust (v2.4)
+# TuneAdjust (v2.5)
 
 Pitch analysis and correction for **monophonic sample libraries** with note names in filenames (e.g. `Violin_A4_1.2s.wav`).
 
-**Full technical reference:** [TECHNICAL_MANUAL.md](TECHNICAL_MANUAL.md)
+**Full technical reference:** [TECHNICAL_MANUAL.md](TECHNICAL_MANUAL.md)  
+**Mathematics:** [docs/TuneAdjust_math_formula.md](docs/TuneAdjust_math_formula.md)
 
 ## Quick start
 
@@ -39,7 +40,8 @@ Optional dependencies:
 | `live_tuner.py` | Playback + real-time tuning meter |
 | `instrument_registry.json` | Instrument range warnings (`double_bass`, `violin`, …) |
 | `requirements.txt` | Python dependencies |
-| `tests/` | Test suite — 111 tests across 9 modules (see [Tests](#tests)) |
+| `tests/` | Test suite — 121 tests (see [Tests](#tests)) |
+| `docs/TuneAdjust_math_formula.md` | Project mathematics and library call sites |
 
 ## Auto-fix rules (GUI default ON, or CLI)
 
@@ -89,7 +91,7 @@ Live tuner uses fast autocorrelation only.
 python -m pytest tests/ -q
 ```
 
-**111 tests** (June 2026) — run the full suite before releases.
+**121 tests** (September 2026) — run the full suite before releases.
 
 | Module | Focus |
 |--------|--------|
@@ -106,11 +108,15 @@ python -m pytest tests/ -q
 
 ## Math
 
-- Cents: `1200 * log2(f_detected / f_expected)`  
-- Semitones: `12 * log2(f_target / f_current)`  
-- Equal temperament, A4 = 440 Hz  
+- **Unsigned cents** (QC / reports): $|1200 \log_2(f_1/f_2)|$ — `cents_difference`  
+- **Signed cents** (Live Tuner needle): $1200 \log_2(f_\mathrm{actual}/f_\mathrm{ref})$ — positive = sharp  
+- **Semitone shift** (what is applied): $12 \log_2(f_\mathrm{target}/f_\mathrm{current})$  
+- Equal temperament table, A4 = 440 Hz (rounded stored values)
+
+The filename note is the **target**. The detector measures audio. Octave-fix may use the filename as a prior; that is not the same as proving the file is already that note. Full identities: [docs/TuneAdjust_math_formula.md](docs/TuneAdjust_math_formula.md).
 
 ## Version
 
-2.4 — June 2026 — expanded test battery (111 tests), integration pipeline tests, `.gitignore`.  
+2.5 — September 2026 — same-note drift is `OUT_OF_TUNE` (not `OCTAVE_ERROR`); digital silence is `NO_DETECTION`; stereo channels preserved on retune; Live Tuner signed cents; math reference.  
+2.4 — June 2026 — expanded test battery, integration pipeline tests, `.gitignore`.  
 See [TECHNICAL_MANUAL.md](TECHNICAL_MANUAL.md) for full reference.
