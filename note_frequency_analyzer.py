@@ -372,6 +372,16 @@ class NoteFrequencyAnalyzerGUI(tk.Tk):
             messagebox.showerror("Error", "Invalid tolerance value. Please enter a number.")
             return
         
+        # Snapshot Tk options on the UI thread — workers must not call Var.get().
+        self._run_opts = {
+            "fix_octave": bool(self.fix_octave_var.get()),
+            "auto_fix": bool(self.auto_fix_var.get()),
+            "instrument": self.instrument_var.get() if hasattr(self, "instrument_var") else "(none)",
+            "table_check": bool(self.use_table_check_var.get()),
+            "batch": bool(self.batch_subfolders_var.get()),
+            "recursive": bool(self.batch_recursive_var.get()),
+        }
+
         # Disable analyze button, enable stop button
         self.analyze_btn.config(state=tk.DISABLED)
         self.stop_btn.config(state=tk.NORMAL)
@@ -467,14 +477,10 @@ class NoteFrequencyAnalyzerGUI(tk.Tk):
                 return
 
             parent_path = self.folder_path.resolve()
-            batch_mode = bool(
-                getattr(self, "batch_subfolders_var", None) and self.batch_subfolders_var.get()
-            )
+            opts = getattr(self, "_run_opts", {})
+            batch_mode = bool(opts.get("batch"))
             if batch_mode:
-                recursive = bool(
-                    getattr(self, "batch_recursive_var", None)
-                    and self.batch_recursive_var.get()
-                )
+                recursive = bool(opts.get("recursive"))
                 target_folders = list_batch_folders(
                     parent_path, include_parent=True, recursive=recursive
                 )
@@ -550,7 +556,7 @@ class NoteFrequencyAnalyzerGUI(tk.Tk):
                 )
                 if summary_detail:
                     status_msg = f"{status_msg} | {summary_detail}"
-            elif getattr(self, "auto_fix_var", None) and self.auto_fix_var.get():
+            elif bool(opts.get("auto_fix")):
                 status_msg = (
                     f"Complete: {total_ok}/{total_files} OK after auto-fix "
                     f"({total_fixed} action(s); {total_review} still need review)"
@@ -585,7 +591,7 @@ class NoteFrequencyAnalyzerGUI(tk.Tk):
     ) -> Tuple[int, int, int]:
         """Analyze one folder; optional auto-fix + verify. Returns (ok, issues, fixed_count)."""
         total = len(audio_files)
-        auto_fix = bool(getattr(self, "auto_fix_var", None) and self.auto_fix_var.get())
+        auto_fix = bool(getattr(self, "_run_opts", {}).get("auto_fix"))
         pass1_results: List[NoteAnalysis] = []
 
         for i, filepath in enumerate(audio_files):
@@ -619,7 +625,7 @@ class NoteFrequencyAnalyzerGUI(tk.Tk):
             for i, result in enumerate(pass1_results):
                 if self.abort_flag.is_set():
                     break
-                inst = self.instrument_var.get() if hasattr(self, "instrument_var") else "(none)"
+                inst = getattr(self, "_run_opts", {}).get("instrument", "(none)")
                 inst_arg = inst if inst and inst != "(none)" else None
                 _, actions = apply_auto_corrections(
                     result.filepath,
@@ -696,8 +702,15 @@ class NoteFrequencyAnalyzerGUI(tk.Tk):
             # Load and detect frequency
             try:
                 audio_data, sr = librosa.load(str(filepath), sr=None, mono=True)
-                use_octave_fix = getattr(self, "fix_octave_var", None) and self.fix_octave_var.get()
-                inst = self.instrument_var.get() if hasattr(self, "instrument_var") else "(none)"
+                opts = getattr(self, "_run_opts", None)
+                if opts is None:
+                    use_octave_fix = bool(
+                        getattr(self, "fix_octave_var", None) and self.fix_octave_var.get()
+                    )
+                    inst = self.instrument_var.get() if hasattr(self, "instrument_var") else "(none)"
+                else:
+                    use_octave_fix = bool(opts.get("fix_octave"))
+                    inst = opts.get("instrument", "(none)")
                 inst_arg = inst if inst and inst != "(none)" else None
                 if use_octave_fix:
                     detected_freq = detect_pitch(
@@ -743,12 +756,20 @@ class NoteFrequencyAnalyzerGUI(tk.Tk):
             detected_note = frequency_to_note(detected_freq)
 
             range_warning = None
-            inst = self.instrument_var.get() if hasattr(self, 'instrument_var') else '(none)'
+            opts = getattr(self, "_run_opts", None)
+            if opts is None:
+                inst = self.instrument_var.get() if hasattr(self, "instrument_var") else "(none)"
+                table_on = bool(
+                    getattr(self, "use_table_check_var", None) and self.use_table_check_var.get()
+                )
+            else:
+                inst = opts.get("instrument", "(none)")
+                table_on = bool(opts.get("table_check"))
             if inst and inst != '(none)':
                 range_warning = check_instrument_range(detected_freq, inst)
 
             table_check = None
-            if getattr(self, 'use_table_check_var', None) and self.use_table_check_var.get():
+            if table_on:
                 if expected_note:
                     table_check = cross_check_expected_table(detected_freq, expected_note, tolerance)
 

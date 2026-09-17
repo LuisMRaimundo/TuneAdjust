@@ -41,6 +41,17 @@ def test_are_enharmonic():
 def test_cents_difference():
     assert pc.cents_difference(440.0, 440.0) == 0.0
     assert pc.cents_difference(466.16, 440.0) == pytest.approx(100.0, abs=1.0)
+    assert pc.cents_difference(425.0, 440.0) == pytest.approx(
+        abs(pc.signed_cents_difference(425.0, 440.0))
+    )
+
+
+def test_signed_cents_difference_direction():
+    sharp = pc.signed_cents_difference(466.16, 440.0)
+    flat = pc.signed_cents_difference(415.30, 440.0)
+    assert sharp > 0
+    assert flat < 0
+    assert pc.signed_cents_difference(0.0, 440.0) == float("inf")
 
 
 def test_cross_check_expected_table():
@@ -129,6 +140,22 @@ def test_evaluate_tune_match_octave_not_mislabeled():
     cents, ok, mis, status = pc.evaluate_tune_match(c5, "C5", "C4", pc.note_to_frequency("C4"), 20.0)
     assert status == "OCTAVE_ERROR"
     assert not mis
+
+
+def test_evaluate_tune_match_same_note_drift_is_out_of_tune():
+    """A4 ±35 ct is the same note, not an octave error (would wrongly trigger rename)."""
+    sharp = 440.0 * (2.0 ** (35.0 / 1200.0))
+    cents, ok, mis, status = pc.evaluate_tune_match(sharp, "A4", "A4", 440.0, 20.0)
+    assert status == "OUT_OF_TUNE"
+    assert not ok and not mis
+    assert 20 < cents < 50
+
+
+def test_detect_frequency_digital_silence(sr):
+    y = np.zeros(sr, dtype=np.float32)
+    assert pc.detect_frequency(y, sr) == 0.0
+    assert pc.detect_pitch(y, sr, expected_note="A4") == 0.0
+    assert pc.detect_frequency(y, sr, fast=True) == 0.0
 
 
 def test_check_instrument_range_warning():

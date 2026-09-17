@@ -1,6 +1,8 @@
 # Tune Detection B — Technical Manual
 
-**Version 2.4 · June 2026**
+**Version 2.5 · September 2026**
+
+Mathematical identities: [docs/TuneAdjust_math_formula.md](docs/TuneAdjust_math_formula.md).
 
 This document is the full technical reference for **Tune Detection B**, a pitch-analysis and sample-correction toolkit for monophonic audio libraries where each filename encodes the intended note (e.g. `Violin_A4_sustain.wav`, `A#2.aif`).
 
@@ -71,9 +73,11 @@ This document is the full technical reference for **Tune Detection B**, a pitch-
 ### Install
 
 ```bash
-cd "tune detection_B"
+cd TuneAdjust
 pip install -r requirements.txt
 ```
+
+Tested review environment (isolated venv, 2026-09-17): Python 3.10.11, librosa 0.11.0, NumPy 2.2.6, numba 0.67.0. If you install **librosa 0.10.x** with older numba, NumPy 2.x may fail (`Numba needs NumPy 1.26 or less`). In that case pin `numpy>=1.23.0,<1.27` or upgrade librosa/numba.
 
 ### Windows launcher
 
@@ -324,9 +328,12 @@ Given `detected_freq`, `detected_note`, `expected_note`, `expected_freq`, `toler
 ### Cents and semitones
 
 ```
-cents     = |1200 × log₂(f_detected / f_expected)|
-semitones = 12 × log₂(f_target / f_current)
+cents (QC, unsigned) = |1200 × log₂(f1 / f2)|
+cents (Live Tuner)   =  1200 × log₂(f_actual / f_ref)   # + sharp, − flat
+semitones (applied)  =  12 × log₂(f_target / f_current)
 ```
+
+Same-note drift (e.g. A4 ±35 ct) is **`OUT_OF_TUNE`**, not `OCTAVE_ERROR`. `OCTAVE_ERROR` requires the same pitch class **and** a different octave. Digital silence (`max|x| < 1e-8`) is `NO_DETECTION`, not a high spurious $f_0$.
 
 Reference: **A4 = 440 Hz**, equal temperament, built-in table C0–B8 in `NOTE_FREQUENCY_MAP`.
 
@@ -436,6 +443,10 @@ pip install pyrubberband
 
 Rubber Band system library must be on PATH. Without it, librosa fallback is used automatically.
 
+### Channels
+
+`load_audio_native` keeps the file's channel count. Pitch is estimated from an equal-weight downmix; the same semitone shift is applied to every channel. Analysis-only loads in the CLI/GUI may still mix to mono.
+
 ### Limits
 
 | Shift range | Expected quality |
@@ -476,7 +487,7 @@ Rubber Band system library must be on PATH. Without it, librosa fallback is used
 
 | Button | Function |
 |--------|----------|
-| Analyze Folder | Start threaded analysis |
+| Analyze Folder | Snapshot options on the UI thread, then start analysis |
 | Stop | Set abort flag |
 | Export Results | Save CSV (custom path) |
 | Set Detected Note | Manual override when detection fails |
@@ -759,7 +770,7 @@ No external config file beyond `instrument_registry.json`. Constants are code-le
 python -m pytest tests/ -q
 ```
 
-As of v2.4 the suite contains **111 automated tests** across unit, quality, and integration layers.
+As of v2.5 the suite contains **121 automated tests** across unit, quality, and integration layers.
 
 ### Test modules
 
@@ -771,9 +782,10 @@ As of v2.4 the suite contains **111 automated tests** across unit, quality, and 
 | `test_auto_correct.py` | `plan_corrections`, rename paths, collision `_2` suffix, `list_batch_folders` |
 | `test_auto_correct_extended.py` | `display_note_token`, `should_rename_to_detected`, path building, `list_audio_files` |
 | `test_pitch_shift_tool.py` | AIFF/WAV soundfile format kwargs |
-| `test_pitch_shift_tool_extended.py` | `_adaptive_n_fft`, RMS restore, FLAC/OGG kwargs, WAV/AIFF save roundtrip |
+| `test_pitch_shift_tool_extended.py` | `_adaptive_n_fft`, RMS restore, stereo shape, CLI missing-input, WAV/AIFF save |
 | `test_pitch_shift_quality.py` | Pitch accuracy within auto-retune range, RMS ratio, envelope correlation |
-| `test_integration_audio.py` | `analyze_file` on WAV fixtures; `apply_auto_corrections` retune and rename |
+| `test_integration_audio.py` | `analyze_file` on WAV fixtures; retune/rename; silence; corrupt file; stereo retune |
+| `test_live_tuner_math.py` | Signed cents helper used by Live Tuner |
 | `conftest.py` | Shared `sys.path` and `sr` fixture |
 
 ### Test categories

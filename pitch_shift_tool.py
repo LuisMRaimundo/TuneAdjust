@@ -28,7 +28,7 @@ Date: January 2026
 import argparse
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 import warnings
 import subprocess
 import tempfile
@@ -65,6 +65,24 @@ from pitch_core import (
     NOTE_FREQUENCY_MAP,
     parse_note,
 )
+
+
+def load_audio_native(path: Path) -> Tuple[np.ndarray, int]:
+    """
+    Load at the file's sample rate.
+    Returns shape (n,) for mono or (n, channels) for multi-channel.
+    """
+    audio, sr = librosa.load(str(path), sr=None, mono=False)
+    if audio.ndim == 2:
+        audio = np.ascontiguousarray(audio.T)
+    return audio, int(sr)
+
+
+def downmix_mono(audio: np.ndarray) -> np.ndarray:
+    """Equal-weight mix used only for pitch detection."""
+    if audio.ndim == 2:
+        return np.mean(audio, axis=1)
+    return audio
 
 
 def _adaptive_n_fft(abs_semitones: float) -> int:
@@ -110,21 +128,7 @@ def _shift_with_librosa(audio: np.ndarray, sr: int, semitones: float) -> np.ndar
     )
 
 
-def pitch_shift_audio(audio_data: np.ndarray, sr: int, semitones: float) -> np.ndarray:
-    """
-    Shift pitch while preserving timbre, amplitude envelope, and dynamics.
-
-    Strategy (auto-retune range ≤ 50 cents / 0.5 st):
-    1. **Rubber Band** (pyrubberband) when available — best harmonic/timbre preservation
-    2. **librosa** phase vocoder with adaptive ``n_fft`` and ``soxr_hq`` resampling
-    3. **Global RMS restore** — compensates typical ~7% loudness loss after shifting
-
-    Designed for small sample-library corrections. Larger shifts remain supported but
-    will alter timbre more (same as any phase-vocoder / RB stretch).
-    """
-    if abs(semitones) < 1e-6:
-        return audio_data.copy()
-
+def _pitch_shift_mono(audio_data: np.ndarray, sr: int, semitones: float) -> np.ndarray:
     shifted: Optional[np.ndarray] = None
     if abs(semitones) <= 1.0:
         shifted = _shift_with_rubberband(audio_data, sr, semitones)
@@ -134,6 +138,32 @@ def pitch_shift_audio(audio_data: np.ndarray, sr: int, semitones: float) -> np.n
 
     shifted = _restore_global_rms(audio_data, shifted)
     return shifted.astype(audio_data.dtype, copy=False)
+
+
+def pitch_shift_audio(audio_data: np.ndarray, sr: int, semitones: float) -> np.ndarray:
+    """
+    Shift pitch while preserving timbre, amplitude envelope, and dynamics.
+
+    Strategy (auto-retune range ≤ 50 cents / 0.5 st):
+    1. **Rubber Band** (pyrubberband) when available — best harmonic/timbre preservation
+    2. **librosa** phase vocoder with adaptive ``n_fft`` and ``soxr_hq`` resampling
+    3. **Global RMS restore** — compensates typical ~7% loudness loss after shifting
+
+    Multi-channel input is shifted per channel with the same semitone amount
+    (detection should use a downmix). Designed for small sample-library corrections.
+    Larger shifts remain supported but will alter timbre more.
+    """
+    if abs(semitones) < 1e-6:
+        return audio_data.copy()
+
+    if audio_data.ndim == 2:
+        channels = [
+            _pitch_shift_mono(audio_data[:, ch], sr, semitones)
+            for ch in range(audio_data.shape[1])
+        ]
+        return np.stack(channels, axis=1)
+
+    return _pitch_shift_mono(audio_data, sr, semitones)
 
 
 def print_frequency_reference_table():
@@ -343,6 +373,9 @@ Examples:
     if args.show_table:
         print_frequency_reference_table()
         sys.exit(0)
+
+    if not args.input:
+        parser.error("input audio file is required unless --show-table is used")
     
     # Validate input file
     input_path = Path(args.input)
@@ -358,8 +391,9 @@ Examples:
     # Load audio
     print("\nLoading audio...")
     try:
-        audio_data, sr = librosa.load(str(input_path), sr=None, mono=True)
-        print(f"✓ Loaded: {len(audio_data) / sr:.2f} seconds, {sr} Hz sample rate")
+        audio_data, sr = load_audio_native(input_path)
+        nch = 1 if audio_data.ndim == 1 else audio_data.shape[1]
+        print(f"✓ Loaded: {len(audio_data) / sr:.2f} seconds, {sr} Hz, {nch} channel(s)")
     except Exception as e:
         print(f"ERROR: Failed to load audio: {e}")
         sys.exit(1)
@@ -367,7 +401,7 @@ Examples:
     # Detect frequency (if not provided)
     if args.detected_freq is None:
         print("\nDetecting current frequency...")
-        detected_freq = detect_frequency(audio_data, sr)
+        detected_freq = detect_frequency(downmix_mono(audio_data), sr)
         if detected_freq <= 0:
             print("ERROR: Could not detect frequency. Please specify --detected-freq manually.")
             sys.exit(1)

@@ -16,6 +16,7 @@ A4_HZ = 440.0
 A0_HZ = 27.5
 DEFAULT_FMIN_HZ = 65.41  # C2 — too high for double bass / tuba low strings
 AUTO_RETUNE_MAX_CENTS = 50.0  # ½ semitone — max auto pitch correction
+SILENCE_PEAK_EPS = 1e-8  # digital silence / empty buffer — no pitch
 CHROMATIC_NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 FLAT_EQUIVALENTS = {
     "Db": "C#", "Eb": "D#", "Gb": "F#", "Ab": "G#", "Bb": "A#",
@@ -157,9 +158,25 @@ def are_enharmonic(note1: str, note2: str) -> bool:
 
 
 def cents_difference(freq1: float, freq2: float) -> float:
-    if freq1 <= 0 or freq2 <= 0:
+    """Absolute deviation in cents. Classification and QC use magnitude only."""
+    signed = signed_cents_difference(freq1, freq2)
+    return abs(signed) if signed != float("inf") else signed
+
+
+def signed_cents_difference(freq_actual: float, freq_reference: float) -> float:
+    """
+    Signed cents of freq_actual relative to freq_reference.
+    Positive = sharp (actual above reference); negative = flat.
+    """
+    if freq_actual <= 0 or freq_reference <= 0:
         return float("inf")
-    return abs(1200.0 * np.log2(freq1 / freq2))
+    return float(1200.0 * np.log2(freq_actual / freq_reference))
+
+
+def _is_digital_silence(audio: np.ndarray, eps: float = SILENCE_PEAK_EPS) -> bool:
+    if audio is None or getattr(audio, "size", 0) == 0:
+        return True
+    return float(np.max(np.abs(audio))) < eps
 
 
 def same_pitch_class(note_a: str, note_b: str) -> bool:
@@ -278,7 +295,11 @@ def evaluate_tune_match(
     if expected_freq > 0 and expected_note:
         if cents_off <= effective_tolerance:
             is_in_tune = True
-        elif same_pitch_class(expected_note, detected_note):
+        elif (
+            same_pitch_class(expected_note, detected_note)
+            and not are_enharmonic(expected_note, detected_note)
+        ):
+            # Same pitch class but a different octave — not a small same-note drift.
             octave_only = True
             is_in_tune = False
             is_mislabeled = False
@@ -616,6 +637,8 @@ def _detect_raw_frequency(
     instrument: Optional[str] = None,
 ) -> float:
     """pYIN / YIN / autocorr estimate without octave correction."""
+    if _is_digital_silence(audio):
+        return 0.0
     fmin, fmax = pitch_search_bounds(expected_note, instrument)
 
     if fast:
@@ -638,6 +661,8 @@ def _detect_raw_frequency_robust(
     instrument: Optional[str] = None,
 ) -> float:
     """Try several segments; return best raw estimate (no per-attempt octave fix)."""
+    if _is_digital_silence(audio):
+        return 0.0
     fmin, fmax = pitch_search_bounds(expected_note, instrument)
     dur = len(audio) / max(sr, 1)
     attempts: List[Tuple[np.ndarray, float, int]] = []
@@ -760,7 +785,7 @@ def detect_frequency_robust(
 
 
 def _detect_autocorr(audio: np.ndarray, sr: int, fmin: float, fmax: float) -> float:
-    if len(audio) < 1024:
+    if _is_digital_silence(audio) or len(audio) < 1024:
         return 0.0
     norm = audio - np.mean(audio)
     norm = norm / (np.max(np.abs(norm)) + 1e-10)
