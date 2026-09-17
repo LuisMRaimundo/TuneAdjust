@@ -109,22 +109,28 @@ def retune_file_in_place(
     instrument: Optional[str] = None,
 ) -> float:
     """Pitch-shift audio in place toward target_freq. Returns applied semitone shift."""
-    from pitch_shift_tool import pitch_shift_audio, save_audio_preserving_format
+    from pitch_shift_tool import (
+        downmix_mono,
+        load_audio_native,
+        pitch_shift_audio,
+        save_audio_preserving_format,
+    )
 
     filepath = filepath.resolve()
-    audio, sr = librosa.load(str(filepath), sr=None, mono=True)
+    audio, sr = load_audio_native(filepath)
+    mono = downmix_mono(audio)
     expected = None
     parsed = parse_note_from_filename(filepath.stem)
     if parsed:
         expected = f"{parsed[0]}{parsed[1]}"
     inst = instrument if instrument not in (None, "", "(none)") else None
     detected = (
-        detect_pitch(audio, sr, expected_note=expected, instrument=inst)
+        detect_pitch(mono, sr, expected_note=expected, instrument=inst)
         if expected
-        else detect_frequency(audio, sr)
+        else detect_frequency(mono, sr)
     )
     if detected <= 0:
-        detected = detect_frequency(audio, sr)
+        detected = detect_frequency(mono, sr)
     if detected <= 0:
         raise RuntimeError("Could not detect frequency for auto-retune")
 
@@ -245,7 +251,7 @@ def apply_auto_corrections(
                 AutoCorrectAction(
                     filepath=path,
                     action="rename",
-                    detail=f"{old_name} → {new_path.name} ({reason}, detected {token})",
+                    detail=f"{old_name} -> {new_path.name} ({reason}, detected {token})",
                     new_path=new_path,
                 )
             )
@@ -277,7 +283,7 @@ def apply_auto_corrections(
                         filepath=path,
                         action="retune",
                         detail=(
-                            f"{path.name}: {shift_cents:.1f} cents → "
+                            f"{path.name}: {shift_cents:.1f} cents -> "
                             f"{current_expected} ({semitones:+.3f} st)"
                         ),
                     )
@@ -410,7 +416,18 @@ def analyze_file(
         expected_note = f"{parsed[0]}{parsed[1]}"
         expected_freq = note_to_frequency(expected_note)
 
-    audio, sr = librosa.load(str(filepath), sr=None, mono=True)
+    try:
+        audio, sr = librosa.load(str(filepath), sr=None, mono=True)
+    except Exception:
+        return FileAnalysis(
+            filepath=filepath,
+            expected_note=expected_note,
+            expected_freq=expected_freq,
+            detected_freq=0.0,
+            detected_note="Unknown",
+            cents_off=float("inf"),
+            status="ERROR",
+        )
     inst = instrument if instrument not in (None, "", "(none)") else None
     if fix_octave and expected_note:
         detected_freq = detect_pitch(

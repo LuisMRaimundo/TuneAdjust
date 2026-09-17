@@ -61,8 +61,9 @@ from pitch_core import (
     NOTE_FREQUENCY_MAP,
     note_to_frequency,
     frequency_to_note,
-    cents_difference,
+    signed_cents_difference,
     detect_frequency,
+    parse_note,
     PitchSmoother,
 )
 
@@ -432,16 +433,15 @@ class LiveTunerGUI(tk.Tk):
                     
                     # Calculate cents if target note is set
                     if self.target_note and self.target_freq > 0:
-                        self.current_cents = cents_difference(freq, self.target_freq)
+                        self.current_cents = signed_cents_difference(freq, self.target_freq)
                     else:
-                        # Calculate cents from nearest note
-                        parsed = self._parse_note(self.current_note)
+                        parsed = parse_note(self.current_note)
                         if parsed:
                             note_name, octave = parsed
                             note_key = f"{note_name}{octave}"
                             expected_freq = note_to_frequency(note_key)
                             if expected_freq > 0:
-                                self.current_cents = cents_difference(freq, expected_freq)
+                                self.current_cents = signed_cents_difference(freq, expected_freq)
                             else:
                                 self.current_cents = 0.0
                         else:
@@ -454,22 +454,6 @@ class LiveTunerGUI(tk.Tk):
         
         # Schedule next update
         self.after(50, self._process_audio_queue)
-    
-    def _parse_note(self, note_str: str) -> Optional[Tuple[str, int]]:
-        """Parse note string into (note_name, octave)."""
-        import re
-        pattern = re.compile(r'([A-G])([#b]?)(-?\d+)', re.IGNORECASE)
-        match = pattern.search(note_str)
-        if match:
-            letter = match.group(1).upper()
-            accidental = match.group(2).replace('♯', '#').replace('♭', 'b')
-            octave = int(match.group(3))
-            note_name = letter + accidental
-            if note_name in FLAT_EQUIVALENTS:
-                note_name = FLAT_EQUIVALENTS[note_name]
-            if note_name in CHROMATIC_NOTES:
-                return (note_name, octave)
-        return None
     
     def _update_display(self):
         """Update the display with current frequency and tuning status."""
@@ -486,12 +470,13 @@ class LiveTunerGUI(tk.Tk):
         else:
             self.cents_label.config(text="-- cents")
         
-        # Determine tuning status and color
-        if self.current_cents <= self.tolerance:
+        abs_cents = abs(self.current_cents) if self.current_cents != float("inf") else float("inf")
+        # Determine tuning status and color (magnitude only)
+        if abs_cents <= self.tolerance:
             # In tune - GREEN
             color = "#4CAF50"  # Green
             status = "In Tune"
-        elif self.current_cents <= self.tolerance * 2:
+        elif abs_cents <= self.tolerance * 2:
             # Slightly out - YELLOW
             color = "#FFC107"  # Yellow/Orange
             status = "Slightly Out"

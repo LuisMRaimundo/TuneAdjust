@@ -58,7 +58,12 @@ from pitch_core import (
     note_to_frequency,
     frequency_to_note,
 )
-from pitch_shift_tool import pitch_shift_audio, save_audio_preserving_format
+from pitch_shift_tool import (
+    downmix_mono,
+    load_audio_native,
+    pitch_shift_audio,
+    save_audio_preserving_format,
+)
 
 
 class PitchShiftGUI:
@@ -306,17 +311,12 @@ class PitchShiftGUI:
         
         def detect():
             try:
-                # Load audio
-                self.status_label.config(text="Loading audio...")
-                audio, sr = librosa.load(str(self.input_file), sr=None, mono=True)
-                
-                self.status_label.config(text="Detecting frequency...")
-                freq = detect_frequency(audio, sr)
-                
-                # Update UI in main thread
+                audio, sr = load_audio_native(self.input_file)
+                freq = detect_frequency(downmix_mono(audio), sr)
                 self.root.after(0, lambda: self.on_frequency_detected(audio, sr, freq))
             except Exception as e:
-                self.root.after(0, lambda: self.on_error(f"Detection failed: {str(e)}"))
+                err = str(e)
+                self.root.after(0, lambda msg=err: self.on_error(f"Detection failed: {msg}"))
         
         thread = threading.Thread(target=detect, daemon=True)
         thread.start()

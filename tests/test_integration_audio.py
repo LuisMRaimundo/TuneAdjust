@@ -44,13 +44,27 @@ class TestAnalyzeFile:
             result.expected_freq,
             result.cents_off,
         )
-        assert "retune" in planned
+        assert result.status.split("+")[0] == "OUT_OF_TUNE"
+        assert planned == ["retune"]
 
     def test_mislabeled_filename(self, tmp_path, sr):
         fp = tmp_path / "Violin_B4_1.wav"
         _write_tone_wav(fp, pc.note_to_frequency("A4"), sr=sr)
         result = analyze_file(fp, tolerance=20.0)
         assert result.status.split("+")[0] == "MISLABELED"
+
+    def test_digital_silence_named_note_is_no_detection(self, tmp_path, sr):
+        fp = tmp_path / "Silent_C4.wav"
+        sf.write(str(fp), np.zeros(sr, dtype=np.float32), sr, format="WAV")
+        result = analyze_file(fp, tolerance=20.0)
+        assert result.status == "NO_DETECTION"
+        assert result.detected_freq == 0.0
+
+    def test_corrupt_wav_is_error_not_raise(self, tmp_path):
+        fp = tmp_path / "Broken_A4.wav"
+        fp.write_text("not a wav", encoding="utf-8")
+        result = analyze_file(fp, tolerance=20.0)
+        assert result.status == "ERROR"
 
 
 class TestApplyAutoCorrections:
@@ -105,3 +119,27 @@ class TestApplyAutoCorrections:
         assert any(a.action == "rename" and a.success for a in actions)
         assert "G4" in new_path.stem
         assert not fp.exists()
+
+    def test_retune_preserves_stereo_channels(self, tmp_path, sr):
+        fp = tmp_path / "Stereo_A3.wav"
+        target = pc.note_to_frequency("A3")
+        f = target * (2.0 ** (30.0 / 1200.0))
+        t = np.arange(int(sr * 2.0)) / sr
+        mono = (0.4 * np.sin(2 * np.pi * f * t)).astype(np.float32)
+        stereo = np.stack([mono, mono * 0.6], axis=1)
+        sf.write(str(fp), stereo, sr, format="WAV")
+        before = analyze_file(fp, tolerance=20.0)
+        new_path, actions = apply_auto_corrections(
+            fp,
+            before.status,
+            before.expected_note,
+            before.detected_note,
+            before.detected_freq,
+            before.expected_freq,
+            before.cents_off,
+        )
+        assert any(a.action == "retune" and a.success for a in actions)
+        info = sf.info(str(new_path))
+        assert info.channels == 2
+        after = analyze_file(new_path, tolerance=20.0)
+        assert after.status == "OK"
